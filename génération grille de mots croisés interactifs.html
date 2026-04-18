@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crossword Master - Mode Interactif</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        :root {
+            --cell-size: 42px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .grid-container {
+            display: grid;
+            gap: 1px;
+            background-color: #334155;
+            border: 3px solid #334155;
+            width: fit-content;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .cell.empty {
+            background-color: #1e293b;
+        }
+
+        .cell input {
+            width: 100%;
+            height: 100%;
+            border: none;
+            text-align: center;
+            text-transform: uppercase;
+            font-weight: 800;
+            font-size: 20px;
+            outline: none;
+            background: transparent;
+            z-index: 2;
+            color: #1e293b;
+        }
+
+        .cell input:focus {
+            background-color: #f1f5f9;
+        }
+
+        .cell .number {
+            position: absolute;
+            top: 1px;
+            left: 2px;
+            font-size: 10px;
+            font-weight: 800;
+            color: #94a3b8;
+            line-height: 1;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* --- Styles de Distinction Nette --- */
+        
+        /* Juste : Vert prononcé avec bordure interne */
+        .cell input.correct {
+            background-color: #bbf7d0 !important; /* Green 200 */
+            color: #166534 !important; /* Green 800 */
+            box-shadow: inset 0 0 0 3px #22c55e; /* Green 500 border */
+        }
+
+        /* Faux : Rouge vif avec texte blanc pour contraste maximal */
+        .cell input.wrong {
+            background-color: #ef4444 !important; /* Red 500 */
+            color: #ffffff !important;
+            box-shadow: inset 0 0 0 3px #b91c1c; /* Red 700 border */
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; }
+            .grid-container { margin: 0 auto; }
+            .cell input { color: transparent !important; }
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4f46e5;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 pb-12">
+
+    <div class="max-w-6xl mx-auto py-8 px-4">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 no-print border-b border-slate-200 pb-6">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Crossword<span class="text-indigo-600">Interactif</span></h1>
+                <p class="text-slate-500">Créez votre grille, puis demandez aux élèves de vérifier leurs réponses.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button id="checkBtn" class="hidden px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold shadow-md flex items-center gap-2">
+                    🔍 Vérifier mes réponses
+                </button>
+                <button id="resetBtn" class="hidden px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-bold shadow-sm flex items-center gap-2">
+                    🔄 Effacer tout
+                </button>
+                <button onclick="window.print()" class="px-4 py-2 border border-slate-300 bg-white rounded-lg hover:bg-slate-50 transition flex items-center gap-2 text-sm font-medium">
+                    🖨️ Imprimer
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            <!-- Zone de configuration Enseignant -->
+            <aside id="configArea" class="lg:col-span-4 space-y-6 no-print">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">1. Préparation</h2>
+                        <button id="editBtn" class="hidden text-xs text-indigo-600 font-bold hover:underline">Modifier la liste</button>
+                    </div>
+                    <textarea id="wordInput" rows="10" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono mb-4" placeholder="MOT : Définition"></textarea>
+                    
+                    <button id="generateBtn" class="w-full bg-slate-900 hover:bg-black text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all">
+                        Lancer l'exercice
+                    </button>
+                    <p id="statusMessage" class="mt-3 text-xs text-center text-slate-500 italic"></p>
+                </div>
+            </aside>
+
+            <!-- Zone de jeu Élève -->
+            <main id="gameArea" class="lg:col-span-12 space-y-8">
+                
+                <div id="resultArea" class="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center min-h-[400px] relative">
+                    <div id="loader" class="hidden absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center rounded-2xl">
+                        <div class="loader"></div>
+                        <p class="mt-4 text-indigo-600 font-medium">Génération de la grille...</p>
+                    </div>
+
+                    <div id="gridWrapper" class="w-full flex justify-center overflow-auto py-4">
+                        <div class="text-slate-300 text-center mt-20 no-print">
+                            <p class="text-5xl mb-4">✍️</p>
+                            <p>Entrez les mots et leurs définitions à gauche.</p>
+                        </div>
+                    </div>
+
+                    <!-- Clues Display -->
+                    <div id="cluesContainer" class="w-full mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-100 pt-8 hidden">
+                        <div class="bg-slate-50 p-6 rounded-xl">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <span class="bg-indigo-600 text-white w-6 h-6 flex items-center justify-center rounded text-xs">H</span>
+                                Horizontal
+                            </h3>
+                            <ul id="cluesH" class="space-y-3 text-sm text-slate-600 leading-relaxed"></ul>
+                        </div>
+                        <div class="bg-slate-50 p-6 rounded-xl">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <span class="bg-emerald-600 text-white w-6 h-6 flex items-center justify-center rounded text-xs">V</span>
+                                Vertical
+                            </h3>
+                            <ul id="cluesV" class="space-y-3 text-sm text-slate-600 leading-relaxed"></ul>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const generateBtn = document.getElementById('generateBtn');
+        const checkBtn = document.getElementById('checkBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const editBtn = document.getElementById('editBtn');
+        
+        const wordInput = document.getElementById('wordInput');
+        const gridWrapper = document.getElementById('gridWrapper');
+        const cluesContainer = document.getElementById('cluesContainer');
+        const loader = document.getElementById('loader');
+        const statusMessage = document.getElementById('statusMessage');
+        const configArea = document.getElementById('configArea');
+        const gameArea = document.getElementById('gameArea');
+
+        // Exemple par défaut
+        wordInput.value = "CHAMPIGNON : Vit dans les bois, n'est ni plante ni animal\nORDINATEUR : Machine de calcul programmable\nLUMIERE : On l'allume quand il fait sombre\nPOMME : Fruit défendu d'Adam et Eve\nAVION : Transport aérien rapide\nINTERNET : Réseau mondial d'information";
+
+        class CrosswordGenerator {
+            constructor(inputLines) {
+                this.wordList = this.parseInput(inputLines);
+                this.wordsToPlace = [...this.wordList].sort((a, b) => b.word.length - a.word.length);
+                this.grid = {}; 
+                this.placedWords = [];
+            }
+
+            parseInput(lines) {
+                return lines.split('\n')
+                    .map(line => {
+                        const parts = line.split(':');
+                        const word = (parts[0] || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z]/g, '');
+                        const clue = (parts[1] || "").trim();
+                        return { word, clue };
+                    })
+                    .filter(item => item.word.length > 1 && item.clue.length > 0);
+            }
+
+            canPlace(word, x, y, direction) {
+                let hasIntersection = this.placedWords.length === 0;
+                const dx = direction === 'H' ? 1 : 0;
+                const dy = direction === 'V' ? 1 : 0;
+
+                for (let i = 0; i < word.length; i++) {
+                    const curX = x + i * dx;
+                    const curY = y + i * dy;
+                    const char = word[i];
+
+                    if (this.grid[`${curX},${curY}`] && this.grid[`${curX},${curY}`] !== char) return false;
+                    if (this.grid[`${curX},${curY}`] === char) hasIntersection = true;
+
+                    if (direction === 'H') {
+                        if (!this.grid[`${curX},${curY}`]) {
+                            if (this.grid[`${curX},${curY-1}`] || this.grid[`${curX},${curY+1}`]) return false;
+                        }
+                        if (i === 0 && this.grid[`${curX-1},${curY}`]) return false;
+                        if (i === word.length - 1 && this.grid[`${curX+1},${curY}`]) return false;
+                    } else {
+                        if (!this.grid[`${curX},${curY}`]) {
+                            if (this.grid[`${curX-1},${curY}`] || this.grid[`${curX+1},${curY}`]) return false;
+                        }
+                        if (i === 0 && this.grid[`${curX},${curY-1}`]) return false;
+                        if (i === word.length - 1 && this.grid[`${curX},${curY+1}`]) return false;
+                    }
+                }
+                return hasIntersection;
+            }
+
+            placeWord(wordObj, x, y, direction) {
+                const dx = direction === 'H' ? 1 : 0;
+                const dy = direction === 'V' ? 1 : 0;
+                for (let i = 0; i < wordObj.word.length; i++) {
+                    this.grid[`${x + i * dx},${y + i * dy}`] = wordObj.word[i];
+                }
+                this.placedWords.push({ ...wordObj, x, y, direction });
+            }
+
+            solve(index) {
+                if (index === this.wordsToPlace.length) return true;
+                const currentWordObj = this.wordsToPlace[index];
+
+                if (this.placedWords.length === 0) {
+                    this.placeWord(currentWordObj, 0, 0, 'H');
+                    return this.solve(index + 1);
+                }
+
+                for (let placed of this.placedWords) {
+                    for (let i = 0; i < placed.word.length; i++) {
+                        for (let j = 0; j < currentWordObj.word.length; j++) {
+                            if (placed.word[i] === currentWordObj.word[j]) {
+                                const newDir = placed.direction === 'H' ? 'V' : 'H';
+                                let newX = (newDir === 'V') ? placed.x + i : placed.x - j;
+                                let newY = (newDir === 'V') ? placed.y - j : placed.y + i;
+
+                                if (this.canPlace(currentWordObj.word, newX, newY, newDir)) {
+                                    const gridBefore = { ...this.grid };
+                                    const placedBefore = [...this.placedWords];
+                                    this.placeWord(currentWordObj, newX, newY, newDir);
+                                    if (this.solve(index + 1)) return true;
+                                    this.grid = gridBefore;
+                                    this.placedWords = placedBefore;
+                                }
+                            }
+                        }
+                    }
+                }
+                return this.solve(index + 1);
+            }
+        }
+
+        function render(gen) {
+            const keys = Object.keys(gen.grid);
+            if (keys.length === 0) {
+                gridWrapper.innerHTML = "<p class='text-red-500 font-bold'>Impossible de générer la grille. Essayez d'autres mots.</p>";
+                return;
+            }
+
+            const coords = keys.map(k => k.split(',').map(Number));
+            const minX = Math.min(...coords.map(c => c[0]));
+            const minY = Math.min(...coords.map(c => c[1]));
+            const maxY = Math.max(...coords.map(c => c[1]));
+            const trueMaxX = Math.max(...coords.map(c => c[0]));
+
+            const w = trueMaxX - minX + 1;
+
+            const container = document.createElement('div');
+            container.className = 'grid-container no-print';
+            container.style.gridTemplateColumns = `repeat(${w}, var(--cell-size))`;
+
+            const numberedCells = {};
+            let counter = 1;
+            const horizontalClues = [];
+            const verticalClues = [];
+
+            const sortedPlacement = [...gen.placedWords].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+            
+            sortedPlacement.forEach(pw => {
+                const key = `${pw.x},${pw.y}`;
+                if (!numberedCells[key]) numberedCells[key] = counter++;
+                const clueObj = { num: numberedCells[key], text: pw.clue };
+                if (pw.direction === 'H') horizontalClues.push(clueObj);
+                else verticalClues.push(clueObj);
+            });
+
+            for (let y = minY; y <= maxY; y++) {
+                for (let x = minX; x <= trueMaxX; x++) {
+                    const cell = document.createElement('div');
+                    const char = gen.grid[`${x},${y}`];
+                    if (char) {
+                        cell.className = 'cell';
+                        const input = document.createElement('input');
+                        input.maxLength = 1;
+                        input.dataset.letter = char;
+                        input.dataset.x = x;
+                        input.dataset.y = y;
+                        
+                        input.addEventListener('input', (e) => {
+                            input.classList.remove('correct', 'wrong');
+                        });
+
+                        input.addEventListener('keydown', (e) => {
+                            if (e.key === 'Backspace' && !input.value) focusPrev(input);
+                            if (e.key === 'ArrowRight') focusNext(input);
+                            if (e.key === 'ArrowLeft') focusPrev(input);
+                        });
+
+                        cell.appendChild(input);
+
+                        if (numberedCells[`${x},${y}`]) {
+                            const num = document.createElement('span');
+                            num.className = 'number';
+                            num.textContent = numberedCells[`${x},${y}`];
+                            cell.appendChild(num);
+                        }
+                    } else {
+                        cell.className = 'cell empty';
+                    }
+                    container.appendChild(cell);
+                }
+            }
+
+            gridWrapper.innerHTML = '';
+            gridWrapper.appendChild(container);
+
+            cluesContainer.classList.remove('hidden');
+            document.getElementById('cluesH').innerHTML = horizontalClues.map(c => `<li><strong>${c.num}.</strong> ${c.text}</li>`).join('');
+            document.getElementById('cluesV').innerHTML = verticalClues.map(c => `<li><strong>${c.num}.</strong> ${c.text}</li>`).join('');
+
+            checkBtn.classList.remove('hidden');
+            resetBtn.classList.remove('hidden');
+            editBtn.classList.remove('hidden');
+            
+            configArea.classList.add('lg:col-span-1', 'opacity-20', 'pointer-events-none');
+            gameArea.classList.replace('lg:col-span-12', 'lg:col-span-11');
+        }
+
+        function focusNext(current) {
+            const inputs = Array.from(document.querySelectorAll('.cell input'));
+            const idx = inputs.indexOf(current);
+            if (idx < inputs.length - 1) inputs[idx + 1].focus();
+        }
+
+        function focusPrev(current) {
+            const inputs = Array.from(document.querySelectorAll('.cell input'));
+            const idx = inputs.indexOf(current);
+            if (idx > 0) inputs[idx - 1].focus();
+        }
+
+        checkBtn.addEventListener('click', () => {
+            const inputs = document.querySelectorAll('.cell input');
+            let allCorrect = true;
+            inputs.forEach(input => {
+                const val = input.value.toUpperCase();
+                const target = input.dataset.letter;
+                
+                if (val === "") {
+                    input.classList.remove('correct', 'wrong');
+                    allCorrect = false;
+                } else if (val === target) {
+                    input.classList.add('correct');
+                    input.classList.remove('wrong');
+                } else {
+                    input.classList.add('wrong');
+                    input.classList.remove('correct');
+                    allCorrect = false;
+                }
+            });
+
+            if (allCorrect) {
+                setTimeout(() => {
+                    alert("Fantastique ! Grille complétée sans aucune erreur ! 🌟");
+                }, 150);
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            const inputs = document.querySelectorAll('.cell input');
+            inputs.forEach(input => {
+                input.value = '';
+                input.classList.remove('correct', 'wrong');
+            });
+        });
+
+        editBtn.addEventListener('click', () => {
+            configArea.classList.remove('lg:col-span-1', 'opacity-20', 'pointer-events-none');
+            gameArea.classList.replace('lg:col-span-11', 'lg:col-span-12');
+            editBtn.classList.add('hidden');
+        });
+
+        generateBtn.addEventListener('click', () => {
+            if (!wordInput.value.trim()) return;
+            loader.classList.remove('hidden');
+            setTimeout(() => {
+                const gen = new CrosswordGenerator(wordInput.value);
+                gen.solve(0);
+                render(gen);
+                loader.classList.add('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 300);
+        });
+    </script>
+</body>
+</html>
